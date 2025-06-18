@@ -16,6 +16,7 @@ const ROLE_INFO = {
 };
 
 const WEIGHTS = [1, 0.5, 0.25, 0.125, 0.0625];
+const CLASS_VICE_COMBO_CAP = 15;
 
 type RoleKey = keyof typeof ROLE_INFO;
 
@@ -73,13 +74,33 @@ function calculate(csvText: string): CalculationResult {
     candidates.sort((a,b)=> b.baselinePerMonth - a.baselinePerMonth || b.remainingCap - a.remainingCap);
 
     const monthLog: MonthDetail = { ym: ymStr, allocations: [] };
-    for (let w=0; w<WEIGHTS.length && w<candidates.length; w++) {
+    for (let w = 0; w < WEIGHTS.length && w < candidates.length; w++) {
       const { role, baselinePerMonth } = candidates[w];
       const weight = WEIGHTS[w];
-      const gain = baselinePerMonth * weight;
-      const allowable = Math.min(gain, ROLE_INFO[role].caps - roleState[role].score);
+      let gain = baselinePerMonth * weight;
+
+      if (role === "班主任" || role === "副班主任") {
+        const comboUsed = roleState["班主任"].score + roleState["副班主任"].score;
+        const remainingCombo = CLASS_VICE_COMBO_CAP - comboUsed;
+        if (remainingCombo <= 0) gain = 0;
+        else gain = Math.min(gain, remainingCombo);
+      }
+
+      let allowable = Math.min(gain, ROLE_INFO[role].caps - roleState[role].score);
       roleState[role].score += allowable;
-      if (roleState[role].score >= ROLE_INFO[role].caps - 1e-6) roleState[role].capped = true;
+
+      if (role === "班主任" || role === "副班主任") {
+        const comboAfter = roleState["班主任"].score + roleState["副班主任"].score;
+        if (comboAfter >= CLASS_VICE_COMBO_CAP - 1e-6) {
+          roleState["班主任"].capped = true;
+          roleState["副班主任"].capped = true;
+        }
+      }
+
+      if (roleState[role].score >= ROLE_INFO[role].caps - 1e-6) {
+        roleState[role].capped = true;
+      }
+
       monthLog.allocations.push({ role, weight, gain: +allowable.toFixed(4) });
     }
     monthDetails.push(monthLog);
